@@ -1,0 +1,4 @@
+lxml==4.9.1
+Requests==2.31.0
+schedule==1.2.0
+win10toast_click==0.1.2
