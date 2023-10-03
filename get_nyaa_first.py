@@ -18,7 +18,7 @@ from win10toast_click import ToastNotifier
 
 
 # 'https://sukebei.nyaa.si/?f=0&c=1_1&q='
-url = 'https://sukebei.nyaa.si/user/hikiko123'
+url = 'https://sukebei.nyaa.si/'
 filename = "stored_data.json"
 
 
