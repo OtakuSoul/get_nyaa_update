@@ -5,3 +5,6 @@
 /venv/
 config.ini
 stored_data.json
+/get_nyaa_update.iml
+/misc.xml
+/modules.xml
