@@ -15,7 +15,6 @@ pip install -r requirements.txt
 
 如果检查到更新，右下角有弹窗提醒,通过点击可用默认浏览器打开
 
-![](nyaa_get_update.png)
 
 如果网络和代理问题导致网页无法网页，右下角会有警告的弹窗，但是没有点击回调
 
