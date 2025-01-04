@@ -12,6 +12,7 @@ from re import match
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import sys
+import re
 from configparser import ConfigParser
 # import io
 import webbrowser
@@ -21,6 +22,7 @@ import zipfile
 
 url = ''
 filename = "stored_data.json"
+ovaNameUrl = ""
 
 
 # 点击回调
@@ -66,6 +68,7 @@ def notication_message(message="nyaa有指定内容更新，快去看！"):
     title = 'nyaa有新内容更新了'
     icon_name = "nyaa.ico"
     timeout = 5
+    # 由于platform库不能直观的判断系统是win10还是win11，这里就不做判断了
     # winotify_notification(title=title, message=message, icon_name=icon_name, timeout=timeout,type='message')
     win11toast_notification(title=title, message=message, icon_name=icon_name, timeout=timeout,type='message')
     # wintoast_notification(title=title, message=message, icon_name=icon_name, timeout=timeout,type='message')
@@ -139,6 +142,31 @@ def get_sys_proxy():
         proxies = None
     return proxies
 
+def getLastOvaName():
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36'}
+    proxies = get_sys_proxy()
+    try:
+        response = requests.get(ovaNameUrl, headers=headers, proxies=proxies,timeout=5)
+    except:
+        log_message = "网络错误，或代理错误，无法访问网页"
+        logger.warning(log_message)
+        notication_warning(message = log_message)
+        return
+    html = response.content.decode('utf-8')
+    node = etree.HTML(html)
+    tbody_html = node.xpath("//article//a")
+    now = datetime.now()
+    for index,anime_html in enumerate(tbody_html):
+        if(len(anime_html.xpath("./h2")) > 0):
+            ovaName = re.split("[#＃]",anime_html.xpath("./h2")[0].text)[0].strip()
+            publish_time_str = anime_html.xpath("./div")[0].text.split("発売")[0]
+            publish_time = datetime.strptime(publish_time_str, '%Y年%m月%d日')
+            if(now > publish_time):
+                log_message = "找到刚发售的"+ ovaName + ",发售日期为" + publish_time_str
+                logger.info(log_message)
+                break
+    return ovaName.split("OVA")[1].strip()
+
 def monitor_website(filename, logger):
     stored_data = {}
     filepath = get_full_filepath(filename)
@@ -150,6 +178,8 @@ def monitor_website(filename, logger):
             except json.decoder.JSONDecodeError:
                 pass
     
+    ovaName = getLastOvaName()
+
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36'}
 
     proxies = get_sys_proxy()
@@ -182,6 +212,7 @@ def monitor_website(filename, logger):
     # print("1234")
     # tr确定到对应的表格中的行，返回的是第一页的row
     # for循环和list存储以当前日期为基准第一个到上个月发布日期为准的所有数据
+    count = 0
     for index,anime_html in enumerate(tbody_html):
     # for index,anime_html in enumerate(node.xpath("/html/body/div/div[2]/div[1]/table/tbody//tr")):
         anime_dict = {}
@@ -192,11 +223,17 @@ def monitor_website(filename, logger):
             # if a_title.text.startswith("[") and a_title.text.endswith(".mp4"):
             if a_title.text != '\n\t\t\t\t\t\t':
                 title = a_title.text
+                count = count + 1
         if not title:
             log_message = "第" + str(index+1) + "解析失败"
             logger.warning(log_message)
             # print(ts,index+1,"解析失败")
             continue
+        if(ovaName not in title):
+            continue
+        log_message = "找到记录" + title
+        logger.info(log_message)
+        # 后续为之前遗漏的内容，主要是时间戳判断和存入文件
         # 匹配发布时间，如果不成功使用上传时间为准，默认网址都会在title字段中有发布时间
         pattern = "\[\d{6}\].*"
         timestamp_compare = 0
@@ -223,18 +260,21 @@ def monitor_website(filename, logger):
         anime_gatherLastMonth_list.append(anime_dict)
     
     if len(anime_gatherLastMonth_list) == 0:
-        log_message ="没有找到到上月为止的数据，请检查网页中是否存在近两月的数据，如有解析失败，则可能由于无法解析导致数据全部丢失"
+        log_message = "处理" + str(count) + "条记录，没有找到到上月为止的数据，请检查网页中是否存在近两月的数据，如有解析失败，则可能由于无法解析导致数据全部丢失"
         logger.warning(log_message)
         # print(ts, "没有找到到上月为止的数据，请检查网页中是否存在近两月的数据，如有解析失败，则可能由于无法解析导致数据全部丢失")
         return
-    # 如果没有存储数据 或者 存储的时间戳异常，不可能比网页中最新的还新，则显示前一条更新的数据
-    if not stored_data or stored_data["timestamp"] > anime_gatherLastMonth_list[0]["timestamp"]:
-        message = fromGatherListHandleMessageAndStore(anime_gatherLastMonth_list,filepath)
-    # 获取在存储时间之后的数据,只显示最近两个月的数据
-    else:
-        anime_gatherStoreTime_list = [x for x in anime_gatherLastMonth_list if stored_data['timestamp'] < x['timestamp'] ]
-        if len(anime_gatherStoreTime_list) > 0:
-            message = fromGatherListHandleMessageAndStore(anime_gatherStoreTime_list, filepath)
+    # 这两条限制会导致这个版本更新只提示一次
+    # # 如果没有存储数据 或者 存储的时间戳异常，不可能比网页中最新的还新，则显示前一条更新的数据
+    # if not stored_data or stored_data["timestamp"] > anime_gatherLastMonth_list[0]["timestamp"]:
+    #     message = fromGatherListHandleMessageAndStore(anime_gatherLastMonth_list,filepath)
+    # # 获取在存储时间之后的数据,只显示最近两个月的数据
+    # else:
+    #     anime_gatherStoreTime_list = [x for x in anime_gatherLastMonth_list if stored_data['timestamp'] < x['timestamp'] ]
+    #     if len(anime_gatherStoreTime_list) > 0:
+    #         message = fromGatherListHandleMessageAndStore(anime_gatherStoreTime_list, filepath)
+    # 强制提示，因为默认只开启一次
+    message = fromGatherListHandleMessageAndStore(anime_gatherLastMonth_list,filepath)
     if message:
         log_message = message.replace('\n','\t',1).replace('\n','')
         logger.info(log_message)
@@ -250,7 +290,7 @@ def get_logger():
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     logdir = "logs"
-    logname = 'nyaa.log'
+    logname = 'ova.log'
     datefmt = '%Y-%m-%d %H:%M:%S'
     log_full_dir = get_full_filepath(logdir)
     if not os.path.exists(log_full_dir):
@@ -293,7 +333,6 @@ def readConfig(configFilePath = "config.ini",zip_path = "config.zip",password=""
         readConfigIni(configFilePath)
     else:
         raise FileNotFoundError("配置文件未在ZIP包中找到")
-
 
 
 

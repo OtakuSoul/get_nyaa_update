@@ -1,0 +1,7 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+/logs/
+/venv/
+config.ini
+stored_data.json
